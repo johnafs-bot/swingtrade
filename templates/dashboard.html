@@ -1,0 +1,271 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row mb-3 align-items-center">
+  <div class="col">
+    <h4 class="mb-0"><i class="bi bi-speedometer2 text-success me-2"></i>Dashboard</h4>
+    <small class="text-muted">Visão geral do sistema — {{ today }}</small>
+  </div>
+  <div class="col-auto d-flex gap-2">
+    <button class="btn btn-sm btn-outline-primary" id="btnUpdate" onclick="triggerUpdate()">
+      <i class="bi bi-arrow-clockwise me-1"></i>Atualizar Dados
+    </button>
+    <button class="btn btn-sm btn-success" id="btnScan" onclick="triggerScan()">
+      <i class="bi bi-search me-1"></i>Escanear Mercado
+    </button>
+  </div>
+</div>
+
+<!-- Regime Badge -->
+<div class="row mb-3">
+  <div class="col-12">
+    {% set regime_colors = {
+      'bull_trend': 'success', 'bear_trend': 'danger', 'lateral': 'secondary',
+      'high_vol': 'warning', 'low_vol': 'info', 'breakout_env': 'primary',
+      'reversal_env': 'warning', 'defensive': 'dark'
+    } %}
+    {% set rc = regime_colors.get(regime.regime, 'secondary') %}
+    <div class="alert alert-{{ rc }} d-flex align-items-center py-2 mb-0">
+      <i class="bi bi-activity me-2 fs-5"></i>
+      <div>
+        <strong>Regime de Mercado:</strong> {{ regime.label }}
+        <span class="ms-3 small">Agressividade: {{ "%.0f"|format((regime.aggression or 1)*100) }}%</span>
+        {% if regime.avg_volatility %}
+        <span class="ms-3 small">Volatilidade Ibov: {{ "%.1f"|format((regime.avg_volatility)*100) }}%a.a.</span>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- KPI Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div class="text-muted small">Capital Total</div>
+            <div class="fs-4 fw-bold">R$ {{ "{:,.0f}".format(user_profile.get('total_capital', 0)).replace(',','.') }}</div>
+          </div>
+          <i class="bi bi-wallet2 fs-2 text-success opacity-50"></i>
+        </div>
+        <div class="mt-1 small text-success">
+          Livre: R$ {{ "{:,.0f}".format(user_profile.get('free_capital', 0)).replace(',','.') }}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div class="text-muted small">Posições Abertas</div>
+            <div class="fs-4 fw-bold">{{ portfolio.n_positions }} / {{ user_profile.get('max_positions', 10) }}</div>
+          </div>
+          <i class="bi bi-briefcase fs-2 text-primary opacity-50"></i>
+        </div>
+        {% if portfolio.total_pnl is defined %}
+        <div class="mt-1 small {% if portfolio.total_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+          PnL: R$ {{ "{:,.0f}".format(portfolio.total_pnl or 0).replace(',','.') }}
+          ({{ "%.1f"|format(portfolio.total_pnl_pct or 0) }}%)
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div class="text-muted small">Alertas Pendentes</div>
+            <div class="fs-4 fw-bold {% if unread_alerts > 0 %}text-danger{% endif %}">{{ unread_alerts }}</div>
+          </div>
+          <i class="bi bi-bell fs-2 text-warning opacity-50"></i>
+        </div>
+        <div class="mt-1 small"><a href="/alerts" class="text-decoration-none">Ver alertas →</a></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-body">
+        <div class="d-flex justify-content-between">
+          <div>
+            <div class="text-muted small">Oportunidades Hoje</div>
+            <div class="fs-4 fw-bold text-success">{{ ranking|selectattr('action','in',['comprar_normal','comprar_pequeno','pre_compra'])|list|length }}</div>
+          </div>
+          <i class="bi bi-graph-up-arrow fs-2 text-success opacity-50"></i>
+        </div>
+        <div class="mt-1 small"><a href="/recommendations" class="text-decoration-none">Ver recomendações →</a></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Top Ranking -->
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-trophy me-1 text-warning"></i>Top Ranking Hoje</span>
+        <a href="/ranking" class="btn btn-sm btn-outline-secondary">Ver tudo</a>
+      </div>
+      <div class="card-body p-0">
+        {% if ranking %}
+        <div class="table-responsive">
+          <table class="table table-hover table-sm mb-0">
+            <thead class="table-dark">
+              <tr>
+                <th>#</th><th>Ticker</th><th>Ação</th><th>Setup</th>
+                <th>Prob.</th><th>EV (R)</th><th>Score</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for r in ranking[:10] %}
+              <tr onclick="window.location='/asset/{{ r.ticker }}'" style="cursor:pointer">
+                <td class="text-muted">{{ r.rank_position }}</td>
+                <td><strong>{{ r.ticker }}</strong></td>
+                <td><span class="badge {{ action_badge(r.action) }}">{{ r.action_label or r.action }}</span></td>
+                <td class="small text-muted">{{ r.setup_name or '—' }}</td>
+                <td>{% if r.probability %}{{ "%.0f"|format(r.probability*100) }}%{% else %}—{% endif %}</td>
+                <td>{% if r.expected_value %}
+                  <span class="{% if r.expected_value >= 0.3 %}text-success{% elif r.expected_value >= 0 %}text-warning{% else %}text-danger{% endif %}">
+                    {{ "%.2f"|format(r.expected_value) }}R
+                  </span>
+                {% else %}—{% endif %}</td>
+                <td>
+                  <div class="progress" style="height:6px;width:60px">
+                    <div class="progress-bar bg-success" style="width:{{ r.composite_score or 0 }}%"></div>
+                  </div>
+                  <small>{{ "%.0f"|format(r.composite_score or 0) }}</small>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-4 text-center text-muted">
+          <i class="bi bi-search fs-2 d-block mb-2"></i>
+          Nenhum dado disponível. <br>
+          <button class="btn btn-sm btn-success mt-2" onclick="triggerScan()">Escanear agora</button>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- Alerts + Portfolio -->
+  <div class="col-lg-4">
+    <!-- Alerts -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-bell me-1 text-warning"></i>Alertas Recentes</span>
+        <a href="/alerts" class="btn btn-sm btn-outline-secondary">Ver todos</a>
+      </div>
+      <div class="list-group list-group-flush">
+        {% if alerts %}
+          {% for a in alerts %}
+          <div class="list-group-item list-group-item-action d-flex gap-2 py-2">
+            {% set p_icon = {'critical':'exclamation-triangle-fill text-danger','high':'exclamation-circle-fill text-warning','medium':'info-circle-fill text-info','low':'check-circle-fill text-success'} %}
+            <i class="bi bi-{{ p_icon.get(a.priority,'info-circle text-secondary') }} mt-1 flex-shrink-0"></i>
+            <div class="small">
+              {% if a.ticker %}<strong>{{ a.ticker }}</strong> — {% endif %}
+              {{ a.message[:80] }}{% if a.message|length > 80 %}...{% endif %}
+              <div class="text-muted" style="font-size:.7rem">{{ a.created_at[:16] }}</div>
+            </div>
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="list-group-item text-muted text-center small py-3">Sem alertas pendentes</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Portfolio Mini -->
+    {% if portfolio.positions %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold">
+        <i class="bi bi-briefcase me-1 text-primary"></i>Carteira
+      </div>
+      <div class="list-group list-group-flush">
+        {% for pos in portfolio.positions[:5] %}
+        {% set curr = pos.current_price or pos.avg_price %}
+        {% set pnl_pct = ((curr - pos.avg_price) / pos.avg_price * 100) if pos.avg_price else 0 %}
+        <a href="/asset/{{ pos.ticker }}" class="list-group-item list-group-item-action d-flex justify-content-between py-2">
+          <div>
+            <strong class="small">{{ pos.ticker }}</strong>
+            <div class="text-muted" style="font-size:.7rem">{{ pos.quantity }} x R${{ "%.2f"|format(pos.avg_price) }}</div>
+          </div>
+          <div class="text-end">
+            <span class="small {% if pnl_pct >= 0 %}text-success{% else %}text-danger{% endif %}">
+              {{ "%+.1f"|format(pnl_pct) }}%
+            </span>
+          </div>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Loading Overlay -->
+<div id="loadingOverlay" class="d-none position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center" style="background:rgba(0,0,0,.5);z-index:9999">
+  <div class="text-white text-center">
+    <div class="spinner-border mb-2" style="width:3rem;height:3rem"></div>
+    <div id="loadingMsg">Processando...</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function triggerScan() {
+  showLoading("Escaneando mercado... isso pode levar 1-2 minutos");
+  fetch('/api/scan', {method:'POST'})
+    .then(r => r.json())
+    .then(d => {
+      hideLoading();
+      if (d.status === 'ok') {
+        const s = d.summary;
+        alert(`Scan completo!\n\nAtivos analisados: ${s.total_analyzed}\nOportunidades: ${s.opportunities}\nRegime: ${s.regime}`);
+        location.reload();
+      } else {
+        alert('Erro: ' + d.message);
+      }
+    })
+    .catch(e => { hideLoading(); alert('Erro: ' + e); });
+}
+
+function triggerUpdate() {
+  showLoading("Atualizando dados de mercado...");
+  fetch('/api/update', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({})})
+    .then(r => r.json())
+    .then(d => {
+      hideLoading();
+      if (d.status === 'ok') {
+        alert('Dados atualizados!');
+        location.reload();
+      } else {
+        alert('Erro: ' + d.message);
+      }
+    })
+    .catch(e => { hideLoading(); alert('Erro: ' + e); });
+}
+
+function showLoading(msg) {
+  document.getElementById('loadingMsg').textContent = msg;
+  document.getElementById('loadingOverlay').classList.remove('d-none');
+  document.getElementById('loadingOverlay').classList.add('d-flex');
+}
+function hideLoading() {
+  document.getElementById('loadingOverlay').classList.add('d-none');
+  document.getElementById('loadingOverlay').classList.remove('d-flex');
+}
+</script>
+{% endblock %}

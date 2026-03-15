@@ -1,0 +1,129 @@
+/* SwingB3 — Custom Styles */
+
+:root {
+  --bs-body-bg: #f8f9fa;
+  --bs-body-color: #212529;
+}
+
+body {
+  background-color: #f0f2f5;
+  font-size: 0.9rem;
+}
+
+/* Navbar */
+.navbar-brand {
+  font-size: 1.1rem;
+  letter-spacing: .5px;
+}
+
+/* Cards */
+.card {
+  border-radius: 10px;
+}
+.card-header {
+  border-bottom: 1px solid rgba(0,0,0,.06);
+  font-size: .85rem;
+  padding: .6rem 1rem;
+}
+
+/* Tables */
+.table th {
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .3px;
+  white-space: nowrap;
+}
+.table td {
+  font-size: .84rem;
+  vertical-align: middle;
+}
+.table tbody tr:hover {
+  background-color: rgba(0, 100, 255, .04);
+}
+
+/* Progress bars */
+.progress {
+  border-radius: 10px;
+}
+
+/* Badges */
+.badge {
+  font-weight: 500;
+  font-size: .7rem;
+}
+
+/* Action badges */
+.badge-buy      { background-color: #198754; }
+.badge-watch    { background-color: #6c757d; }
+.badge-hold     { background-color: #0d6efd; }
+.badge-reduce   { background-color: #fd7e14; }
+.badge-exit     { background-color: #dc3545; }
+.badge-prebuy   { background-color: #0dcaf0; color: #000; }
+
+/* Score bar */
+.score-bar {
+  height: 4px;
+  border-radius: 4px;
+  display: inline-block;
+}
+
+/* Regime badge */
+.regime-pill {
+  border-radius: 20px;
+  padding: .3rem .8rem;
+  font-size: .8rem;
+  font-weight: 600;
+}
+
+/* KPI cards */
+.kpi-card {
+  border-left: 4px solid;
+}
+
+/* Sticky header fix */
+.sticky-top { z-index: 1020; }
+
+/* Chart container */
+canvas {
+  max-height: 300px;
+}
+
+/* Loading overlay */
+#loadingOverlay {
+  backdrop-filter: blur(4px);
+}
+
+/* Scrollable tables */
+.table-responsive {
+  border-radius: 0 0 10px 10px;
+}
+
+/* Alert list items */
+.list-group-item {
+  font-size: .84rem;
+}
+
+/* Footer */
+footer {
+  font-size: .75rem;
+  border-top: 1px solid rgba(0,0,0,.1);
+}
+
+/* Mobile tweaks */
+@media (max-width: 576px) {
+  .navbar-brand { font-size: .95rem; }
+  h4 { font-size: 1.1rem; }
+  .card-body { padding: .75rem; }
+}
+
+/* Highlight top 3 in ranking */
+tr.top-1 { background-color: rgba(255, 215, 0, .08) !important; }
+tr.top-2 { background-color: rgba(192, 192, 192, .08) !important; }
+tr.top-3 { background-color: rgba(205, 127, 50, .08) !important; }
+
+/* Regime colors */
+.regime-bull_trend  { border-color: #198754 !important; }
+.regime-bear_trend  { border-color: #dc3545 !important; }
+.regime-lateral     { border-color: #6c757d !important; }
+.regime-high_vol    { border-color: #ffc107 !important; }
+.regime-defensive   { border-color: #212529 !important; }

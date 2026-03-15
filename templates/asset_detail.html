@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block title %}{{ ticker }}{% endblock %}
+{% block content %}
+
+<div class="d-flex align-items-center gap-3 mb-3">
+  <div>
+    <h4 class="mb-0"><strong>{{ ticker }}</strong>
+      {% if info.name %}<span class="text-muted fw-normal fs-6 ms-2">{{ info.name }}</span>{% endif %}
+    </h4>
+    <small class="text-muted">{{ info.sector or '' }}{% if info.subsector %} / {{ info.subsector }}{% endif %}</small>
+  </div>
+  <div class="ms-auto d-flex gap-2">
+    <button class="btn btn-sm btn-outline-primary" onclick="refreshTicker()">
+      <i class="bi bi-arrow-clockwise me-1"></i>Atualizar
+    </button>
+  </div>
+</div>
+
+<div class="row g-3">
+
+  <!-- Decision Card -->
+  <div class="col-lg-4">
+    {% set ac = decision.action %}
+    {% set col_map = {'comprar_normal':'success','comprar_pequeno':'success','pre_compra':'info',
+                       'manter':'primary','observar':'secondary','reduzir':'warning',
+                       'sair':'danger','ignorar':'dark'} %}
+    {% set col = col_map.get(ac, 'secondary') %}
+    <div class="card border-0 shadow-sm border-start border-4 border-{{ col }}">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <div class="text-muted small">Decisão do Sistema</div>
+          <span class="badge bg-{{ col }} fs-6">{{ decision.action_label or ac }}</span>
+        </div>
+        <div class="small text-muted mb-3">{{ decision.justification or '—' }}</div>
+
+        <div class="row g-2 text-center">
+          <div class="col-4">
+            <div class="text-muted" style="font-size:.7rem">Probabilidade</div>
+            <div class="fw-bold {% if (decision.prob_success or 0) >= 0.6 %}text-success{% elif (decision.prob_success or 0) >= 0.5 %}text-warning{% else %}text-danger{% endif %}">
+              {% if decision.prob_success %}{{ "%.0f"|format(decision.prob_success*100) }}%{% else %}—{% endif %}
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="text-muted" style="font-size:.7rem">EV (R)</div>
+            <div class="fw-bold {% if (decision.expected_value_r or 0) >= 0.3 %}text-success{% elif (decision.expected_value_r or 0) >= 0 %}text-warning{% else %}text-danger{% endif %}">
+              {% if decision.expected_value_r %}{{ "%.2f"|format(decision.expected_value_r) }}R{% else %}—{% endif %}
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="text-muted" style="font-size:.7rem">R:R</div>
+            <div class="fw-bold">{% if decision.payoff %}{{ "%.1f"|format(decision.payoff) }}:1{% else %}—{% endif %}</div>
+          </div>
+        </div>
+
+        {% if decision.entry_price %}
+        <hr class="my-2">
+        <div class="row g-1 small">
+          <div class="col-4">
+            <div class="text-muted">Entrada</div>
+            <div class="fw-semibold">R$ {{ "%.2f"|format(decision.entry_price) }}</div>
+          </div>
+          <div class="col-4">
+            <div class="text-muted text-danger">Stop</div>
+            <div class="fw-semibold text-danger">{{ "%.2f"|format(decision.stop_price) if decision.stop_price else '—' }}</div>
+          </div>
+          <div class="col-4">
+            <div class="text-muted text-success">Alvo</div>
+            <div class="fw-semibold text-success">{{ "%.2f"|format(decision.target_price) if decision.target_price else '—' }}</div>
+          </div>
+        </div>
+        {% endif %}
+
+        {% if decision.suggested_quantity %}
+        <hr class="my-2">
+        <div class="small">
+          <div class="d-flex justify-content-between">
+            <span class="text-muted">Qtd. Sugerida</span>
+            <strong>{{ decision.suggested_quantity }} ações</strong>
+          </div>
+          <div class="d-flex justify-content-between">
+            <span class="text-muted">Capital Necessário</span>
+            <strong>R$ {{ "{:,.0f}".format(decision.capital_required or 0).replace(',','.') }}</strong>
+          </div>
+          <div class="d-flex justify-content-between">
+            <span class="text-muted">Risco (R$)</span>
+            <strong class="text-danger">R$ {{ "{:,.0f}".format(decision.risk_monetary or 0).replace(',','.') }}</strong>
+          </div>
+          <div class="d-flex justify-content-between">
+            <span class="text-muted">% da Carteira</span>
+            <strong>{{ "%.1f"|format(decision.position_pct or 0) }}%</strong>
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Fundamental Card -->
+    {% if decision.fundamental_detail %}
+    {% set fd = decision.fundamental_detail %}
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-header bg-transparent fw-semibold small">
+        <i class="bi bi-building me-1"></i>Fundamentos
+        <span class="badge bg-{{ 'success' if fd.fundamental_grade in ['A','B'] else ('warning' if fd.fundamental_grade == 'C' else 'danger') }} ms-2">
+          {{ fd.fundamental_grade or 'N/A' }}
+        </span>
+      </div>
+      <div class="card-body small">
+        {% if fd.data %}
+        {% set d = fd.data %}
+        <div class="row g-1">
+          {% if d.pl_ratio %}<div class="col-6 d-flex justify-content-between"><span class="text-muted">P/L</span><strong>{{ "%.1f"|format(d.pl_ratio) }}x</strong></div>{% endif %}
+          {% if d.ev_ebitda %}<div class="col-6 d-flex justify-content-between"><span class="text-muted">EV/EBITDA</span><strong>{{ "%.1f"|format(d.ev_ebitda) }}x</strong></div>{% endif %}
+          {% if d.roe %}<div class="col-6 d-flex justify-content-between"><span class="text-muted">ROE</span><strong>{{ "%.1f"|format(d.roe*100) }}%</strong></div>{% endif %}
+          {% if d.net_margin %}<div class="col-6 d-flex justify-content-between"><span class="text-muted">Marg. Liq.</span><strong>{{ "%.1f"|format(d.net_margin*100) }}%</strong></div>{% endif %}
+          {% if d.net_debt_ebitda %}<div class="col-6 d-flex justify-content-between"><span class="text-muted">Dív/EBITDA</span><strong>{{ "%.1f"|format(d.net_debt_ebitda) }}x</strong></div>{% endif %}
+          {% if d.dividend_yield %}<div class="col-6 d-flex justify-content-between"><span class="text-muted">DY</span><strong>{{ "%.1f"|format(d.dividend_yield*100) }}%</strong></div>{% endif %}
+        </div>
+        {% endif %}
+        {% if fd.scores %}
+        <hr class="my-2">
+        {% for k,v in fd.scores.items() %}
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <small class="text-muted text-capitalize">{{ k }}</small>
+          <div class="d-flex align-items-center gap-1">
+            <div class="progress" style="width:60px;height:5px">
+              <div class="progress-bar bg-{{ 'success' if v>=0.7 else ('warning' if v>=0.5 else 'danger') }}" style="width:{{ (v*100)|int }}%"></div>
+            </div>
+            <small>{{ "%.0f"|format(v*100) }}</small>
+          </div>
+        </div>
+        {% endfor %}
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Chart + Indicators -->
+  <div class="col-lg-8">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent fw-semibold small"><i class="bi bi-graph-up me-1"></i>Preço de Fechamento (120 dias)</div>
+      <div class="card-body">
+        <canvas id="priceChart" height="130"></canvas>
+      </div>
+    </div>
+
+    <!-- Technical Indicators -->
+    {% if indicators %}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold small"><i class="bi bi-sliders me-1"></i>Indicadores Técnicos</div>
+      <div class="card-body">
+        <div class="row g-2 small">
+          <div class="col-md-3 col-6">
+            <div class="text-muted">RSI(14)</div>
+            {% if indicators.rsi14 %}
+            {% set rsi = indicators.rsi14 %}
+            <div class="fw-bold {% if rsi > 70 %}text-danger{% elif rsi < 30 %}text-success{% else %}text-body{% endif %}">{{ "%.1f"|format(rsi) }}</div>
+            <div style="font-size:.65rem" class="text-muted">{% if rsi > 70 %}Sobrecomprado{% elif rsi < 30 %}Sobrevendido{% else %}Neutro{% endif %}</div>
+            {% else %}—{% endif %}
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="text-muted">ATR(14)</div>
+            <div class="fw-bold">{% if indicators.atr14 %}{{ "%.2f"|format(indicators.atr14) }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="text-muted">Vol. Hist. (a.a.)</div>
+            <div class="fw-bold">{% if indicators.vol_hist %}{{ "%.1f"|format(indicators.vol_hist*100) }}%{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="text-muted">Vol. Relativo</div>
+            <div class="fw-bold {% if (indicators.rvol or 0) >= 1.5 %}text-success{% endif %}">{% if indicators.rvol %}{{ "%.2f"|format(indicators.rvol) }}x{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="text-muted">Tendência Curta</div>
+            <span class="badge bg-{{ 'success' if indicators.trend_short=='up' else ('danger' if indicators.trend_short=='down' else 'secondary') }}">
+              {{ indicators.trend_short or '—' }}
+            </span>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="text-muted">Tendência Média</div>
+            <span class="badge bg-{{ 'success' if indicators.trend_mid=='up' else ('danger' if indicators.trend_mid=='down' else 'secondary') }}">
+              {{ indicators.trend_mid or '—' }}
+            </span>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="text-muted">Tendência Longa</div>
+            <span class="badge bg-{{ 'success' if indicators.trend_long=='up' else ('danger' if indicators.trend_long=='down' else 'secondary') }}">
+              {{ indicators.trend_long or '—' }}
+            </span>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="text-muted">Força Relativa</div>
+            <div class="fw-bold {% if (indicators.rel_strength or 0) > 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if indicators.rel_strength %}{{ "%+.1f"|format(indicators.rel_strength*100) }}%{% else %}—{% endif %}
+            </div>
+          </div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">SMA20</div>
+            <div class="fw-bold">{% if indicators.sma20 %}{{ "%.2f"|format(indicators.sma20) }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">SMA50</div>
+            <div class="fw-bold">{% if indicators.sma50 %}{{ "%.2f"|format(indicators.sma50) }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">SMA200</div>
+            <div class="fw-bold">{% if indicators.sma200 %}{{ "%.2f"|format(indicators.sma200) }}{% else %}—{% endif %}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Detected Setups -->
+    {% if decision.all_setups %}
+    <div class="card border-0 shadow-sm mt-3">
+      <div class="card-header bg-transparent fw-semibold small"><i class="bi bi-crosshair me-1"></i>Setups Detectados</div>
+      <div class="card-body p-0">
+        {% for s in decision.all_setups %}
+        <div class="p-3 border-bottom">
+          <div class="d-flex justify-content-between">
+            <strong class="small">{{ s.name }}</strong>
+            <span class="badge bg-{{ 'success' if s.confidence >= 0.65 else 'warning' }}">Conf. {{ "%.0f"|format(s.confidence*100) }}%</span>
+          </div>
+          <div class="row g-2 mt-1 small">
+            <div class="col-3"><span class="text-muted">Entrada:</span> <strong>{{ "%.2f"|format(s.entry) if s.entry else '—' }}</strong></div>
+            <div class="col-3"><span class="text-danger">Stop:</span> <strong>{{ "%.2f"|format(s.stop) if s.stop else '—' }}</strong></div>
+            <div class="col-3"><span class="text-success">Alvo:</span> <strong>{{ "%.2f"|format(s.target) if s.target else '—' }}</strong></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const chartData = {{ chart_data | tojson }};
+if (chartData && chartData.dates) {
+  new Chart(document.getElementById('priceChart'), {
+    type: 'line',
+    data: {
+      labels: chartData.dates,
+      datasets: [{
+        label: '{{ ticker }}',
+        data: chartData.closes,
+        borderColor: '#198754',
+        backgroundColor: 'rgba(25,135,84,.08)',
+        borderWidth: 2,
+        pointRadius: 0,
+        fill: true,
+        tension: 0.2,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
+        y: { ticks: { font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+function refreshTicker() {
+  fetch('/api/update/ticker/{{ ticker }}', {method:'POST'})
+    .then(r => r.json())
+    .then(d => { alert(d.status === 'ok' ? 'Atualizado!' : 'Erro: '+d.message); location.reload(); });
+}
+</script>
+{% endblock %}

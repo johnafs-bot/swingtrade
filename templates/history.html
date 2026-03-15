@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Histórico{% endblock %}
+{% block content %}
+<h4 class="mb-4"><i class="bi bi-clock-history text-secondary me-2"></i>Histórico de Decisões e Performance</h4>
+
+<ul class="nav nav-tabs mb-3" id="histTabs">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tabDecisions">Decisões</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tabClosed">Operações Encerradas</button></li>
+</ul>
+
+<div class="tab-content">
+  <!-- Decisions Tab -->
+  <div class="tab-pane fade show active" id="tabDecisions">
+    {% if decisions %}
+    <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead class="table-dark">
+          <tr>
+            <th>Data</th><th>Ticker</th><th>Ação</th><th>Setup</th>
+            <th>Prob.</th><th>EV</th><th>Risco%</th><th>Regime</th><th>Fund.</th><th>Justificativa</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for d in decisions %}
+          <tr>
+            <td class="text-muted small">{{ d.date }}</td>
+            <td><a href="/asset/{{ d.ticker }}" class="fw-bold text-decoration-none">{{ d.ticker }}</a></td>
+            <td><span class="badge {{ action_badge(d.action) }}">{{ d.action }}</span></td>
+            <td class="small text-muted">{{ d.setup_name or '—' }}</td>
+            <td>{% if d.probability %}{{ "%.0f"|format(d.probability*100) }}%{% else %}—{% endif %}</td>
+            <td>{% if d.expected_value %}<span class="{% if d.expected_value >= 0 %}text-success{% else %}text-danger{% endif %}">{{ "%.2f"|format(d.expected_value) }}R</span>{% else %}—{% endif %}</td>
+            <td>{% if d.risk_pct %}{{ "%.2f"|format(d.risk_pct) }}%{% else %}—{% endif %}</td>
+            <td class="small text-muted">{{ d.regime or '—' }}</td>
+            <td><span class="badge bg-{{ 'success' if d.fundamental_grade in ['A','B'] else 'secondary' }}">{{ d.fundamental_grade or '?' }}</span></td>
+            <td class="small text-muted" style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ d.justification or '' }}">{{ d.justification[:60] if d.justification else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-4 text-muted">Nenhuma decisão registrada ainda.</div>
+    {% endif %}
+  </div>
+
+  <!-- Closed Positions Tab -->
+  <div class="tab-pane fade" id="tabClosed">
+    {% if closed %}
+    {% set total_pnl = closed | sum(attribute='pnl') %}
+    {% set wins = closed | selectattr('pnl', '>', 0) | list %}
+    {% set losses = closed | selectattr('pnl', '<', 0) | list %}
+    <div class="row g-3 mb-3">
+      <div class="col-sm-3">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small">Total de Operações</div>
+          <div class="fs-5 fw-bold">{{ closed|length }}</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small">Taxa de Acerto</div>
+          <div class="fs-5 fw-bold text-success">{{ "%.0f"|format(wins|length / (closed|length) * 100) }}%</div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small">PnL Total</div>
+          <div class="fs-5 fw-bold {% if total_pnl >= 0 %}text-success{% else %}text-danger{% endif %}">
+            R$ {{ "{:,.0f}".format(total_pnl).replace(',','.') }}
+          </div>
+        </div>
+      </div>
+      <div class="col-sm-3">
+        <div class="card border-0 shadow-sm text-center p-3">
+          <div class="text-muted small">Wins / Losses</div>
+          <div class="fs-5 fw-bold">
+            <span class="text-success">{{ wins|length }}</span> /
+            <span class="text-danger">{{ losses|length }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead class="table-dark">
+          <tr><th>Ticker</th><th>Qtd.</th><th>PM</th><th>Saída</th><th>PnL R$</th><th>PnL%</th><th>Setup</th><th>Abertura</th><th>Encerramento</th></tr>
+        </thead>
+        <tbody>
+          {% for pos in closed %}
+          <tr>
+            <td><strong>{{ pos.ticker }}</strong></td>
+            <td>{{ pos.quantity }}</td>
+            <td>{{ "%.2f"|format(pos.avg_price) }}</td>
+            <td>{{ "%.2f"|format(pos.current_price or pos.avg_price) }}</td>
+            <td class="{% if (pos.pnl or 0) >= 0 %}text-success{% else %}text-danger{% endif %}">
+              R$ {{ "{:,.0f}".format(pos.pnl or 0).replace(',','.') }}
+            </td>
+            <td class="{% if (pos.pnl_pct or 0) >= 0 %}text-success{% else %}text-danger{% endif %}">
+              {{ "%+.1f"|format(pos.pnl_pct or 0) }}%
+            </td>
+            <td class="small text-muted">{{ pos.setup_name or '—' }}</td>
+            <td class="small text-muted">{{ pos.date_opened or '—' }}</td>
+            <td class="small text-muted">{{ pos.closed_at or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="text-center py-4 text-muted">Nenhuma operação encerrada ainda.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

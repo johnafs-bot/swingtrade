@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}Backtest{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-bar-chart-steps text-secondary me-2"></i>Backtest e Validação</h4>
+  <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#runBacktestModal">
+    <i class="bi bi-play-fill me-1"></i>Rodar Backtest
+  </button>
+</div>
+
+<div class="alert alert-info small">
+  <i class="bi bi-info-circle me-1"></i>
+  O backtest valida os setups em dados históricos. Os resultados informam as probabilidades padrão usadas no sistema.
+  Rode o backtest periodicamente para manter as estatísticas atualizadas.
+</div>
+
+{% if results %}
+<div class="row g-3 mb-4">
+  {% for r in results %}
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold">
+        <i class="bi bi-crosshair me-1"></i>{{ r.setup_name.replace('_',' ').title() }}
+        <span class="ms-2 small text-muted">{{ r.date_start }} → {{ r.date_end }}</span>
+      </div>
+      <div class="card-body">
+        <div class="row g-2 text-center">
+          <div class="col-4">
+            <div class="text-muted small">Total Trades</div>
+            <div class="fs-5 fw-bold">{{ r.total_trades or 0 }}</div>
+          </div>
+          <div class="col-4">
+            <div class="text-muted small">Taxa de Acerto</div>
+            <div class="fs-5 fw-bold {{ 'text-success' if (r.win_rate or 0) >= 0.5 else 'text-danger' }}">
+              {{ "%.0f"|format((r.win_rate or 0)*100) }}%
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="text-muted small">Expectativa</div>
+            <div class="fs-5 fw-bold {{ 'text-success' if (r.expected_value or 0) >= 0 else 'text-danger' }}">
+              {{ "%.2f"|format(r.expected_value or 0) }}%
+            </div>
+          </div>
+          <div class="col-3">
+            <div class="text-muted small">Payoff</div>
+            <div class="fw-bold">{{ "%.2f"|format(r.payoff or 0) }}</div>
+          </div>
+          <div class="col-3">
+            <div class="text-muted small">Retorno Total</div>
+            <div class="fw-bold {{ 'text-success' if (r.total_return or 0) >= 0 else 'text-danger' }}">
+              {{ "%+.1f"|format(r.total_return or 0) }}%
+            </div>
+          </div>
+          <div class="col-3">
+            <div class="text-muted small">Max. Drawdown</div>
+            <div class="fw-bold text-danger">{{ "%.1f"|format(r.max_drawdown or 0) }}%</div>
+          </div>
+          <div class="col-3">
+            <div class="text-muted small">Sharpe</div>
+            <div class="fw-bold">{{ "%.2f"|format(r.sharpe_ratio or 0) }}</div>
+          </div>
+        </div>
+        <hr class="my-2">
+        <div class="row g-2 small text-muted">
+          <div class="col-6">Ganho médio: <strong class="text-success">{{ "%.2f"|format(r.avg_gain or 0) }}%</strong></div>
+          <div class="col-6">Perda média: <strong class="text-danger">{{ "%.2f"|format(r.avg_loss or 0) }}%</strong></div>
+        </div>
+        <div class="small text-muted mt-1">Criado: {{ r.created_at[:10] if r.created_at else '—' }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-bar-chart fs-1 d-block mb-3 opacity-25"></i>
+  Nenhum resultado de backtest. Rode o primeiro backtest.
+</div>
+{% endif %}
+
+<!-- Modal -->
+<div class="modal fade" id="runBacktestModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Configurar Backtest</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small">Tickers (separados por vírgula)</label>
+          <input id="btTickers" class="form-control" value="PETR4,VALE3,ITUB4,BBDC4,ABEV3,WEGE3,SUZB3,KLBN11">
+        </div>
+        <div class="row g-2">
+          <div class="col">
+            <label class="form-label small">Data Início</label>
+            <input id="btStart" type="date" class="form-control" value="2021-01-01">
+          </div>
+          <div class="col">
+            <label class="form-label small">Data Fim</label>
+            <input id="btEnd" type="date" class="form-control" value="{{ today.replace('/','-') }}">
+          </div>
+        </div>
+        <div class="alert alert-warning mt-3 small">
+          <i class="bi bi-clock me-1"></i>O backtest pode demorar vários minutos dependendo dos tickers e período.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary" onclick="runBacktest()"><i class="bi bi-play-fill me-1"></i>Executar</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function runBacktest() {
+  const tickers = document.getElementById('btTickers').value.split(',').map(t => t.trim());
+  const start   = document.getElementById('btStart').value;
+  const end     = document.getElementById('btEnd').value;
+
+  document.querySelector('#runBacktestModal .modal-footer .btn-primary').disabled = true;
+  document.querySelector('#runBacktestModal .modal-footer .btn-primary').textContent = 'Executando...';
+
+  fetch('/api/backtest/run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({tickers, start, end})
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.status === 'ok') {
+      alert('Backtest concluído!');
+      location.reload();
+    } else {
+      alert('Erro: ' + d.message);
+    }
+  })
+  .catch(e => alert('Erro: ' + e))
+  .finally(() => {
+    document.querySelector('#runBacktestModal .modal-footer .btn-primary').disabled = false;
+    document.querySelector('#runBacktestModal .modal-footer .btn-primary').textContent = 'Executar';
+  });
+}
+</script>
+{% endblock %}

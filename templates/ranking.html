@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Ranking{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-trophy text-warning me-2"></i>Ranking Diário</h4>
+  <small class="text-muted">{{ today }} — Regime: <strong>{{ regime.label }}</strong></small>
+</div>
+
+{% if ranking %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>#</th><th>Ticker</th><th>Ação</th><th>Setup</th>
+            <th>Prob.</th><th>EV (R)</th><th>R:R</th><th>Fund.</th>
+            <th>Entrada</th><th>Stop</th><th>Alvo</th><th>Score</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for r in ranking %}
+        <tr onclick="window.location='/asset/{{ r.ticker }}'" style="cursor:pointer"
+            class="{% if loop.index <= 3 %}table-success{% elif loop.index <= 10 %}{% else %}{% endif %}">
+          <td>
+            {% if loop.index == 1 %}<i class="bi bi-trophy-fill text-warning"></i>
+            {% elif loop.index == 2 %}<i class="bi bi-trophy-fill text-secondary"></i>
+            {% elif loop.index == 3 %}<i class="bi bi-trophy-fill text-danger"></i>
+            {% else %}<span class="text-muted">{{ loop.index }}</span>{% endif %}
+          </td>
+          <td><strong>{{ r.ticker }}</strong></td>
+          <td><span class="badge {{ action_badge(r.action) }}">{{ r.action_label or r.action }}</span></td>
+          <td class="small text-muted">{{ r.setup_name or '—' }}</td>
+          <td>{% if r.probability %}
+            <span class="{% if r.probability >= 0.6 %}text-success{% elif r.probability >= 0.5 %}text-warning{% else %}text-muted{% endif %}">
+              {{ "%.0f"|format(r.probability*100) }}%
+            </span>
+          {% else %}—{% endif %}</td>
+          <td>{% if r.expected_value %}
+            <span class="{% if r.expected_value >= 0.3 %}text-success fw-bold{% elif r.expected_value >= 0 %}text-warning{% else %}text-danger{% endif %}">
+              {{ "%.2f"|format(r.expected_value) }}R
+            </span>
+          {% else %}—{% endif %}</td>
+          <td>{% if r.risk_reward %}{{ "%.1f"|format(r.risk_reward) }}:1{% else %}—{% endif %}</td>
+          <td><span class="badge bg-{{ 'success' if r.fundamental_grade in ['A','B'] else ('warning' if r.fundamental_grade == 'C' else 'danger') }}">{{ r.fundamental_grade or '?' }}</span></td>
+          <td>{% if r.entry_price %}{{ "%.2f"|format(r.entry_price) }}{% else %}—{% endif %}</td>
+          <td class="text-danger">{% if r.stop_price %}{{ "%.2f"|format(r.stop_price) }}{% else %}—{% endif %}</td>
+          <td class="text-success">{% if r.target_price %}{{ "%.2f"|format(r.target_price) }}{% else %}—{% endif %}</td>
+          <td>
+            <div class="d-flex align-items-center gap-1">
+              <div class="progress" style="height:6px;width:50px">
+                <div class="progress-bar {{ 'bg-success' if r.composite_score >= 60 else 'bg-warning' }}" style="width:{{ r.composite_score or 0 }}%"></div>
+              </div>
+              <strong class="small">{{ "%.0f"|format(r.composite_score or 0) }}</strong>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-trophy fs-1 d-block mb-3 opacity-25"></i>
+  <p>Nenhum ranking disponível. Execute o scan no <a href="/">Dashboard</a>.</p>
+</div>
+{% endif %}
+{% endblock %}

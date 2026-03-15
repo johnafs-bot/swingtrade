@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Radar de Mercado{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-radar text-success me-2"></i>Radar de Mercado</h4>
+  <div class="d-flex gap-2">
+    <select class="form-select form-select-sm" id="filterAction" onchange="filterTable()">
+      <option value="">Todas as ações</option>
+      <option value="comprar_normal">Comprar</option>
+      <option value="comprar_pequeno">Comprar Pequeno</option>
+      <option value="pre_compra">Pré-Compra</option>
+      <option value="observar">Observar</option>
+      <option value="manter">Manter</option>
+      <option value="reduzir">Reduzir</option>
+      <option value="sair">Sair</option>
+    </select>
+  </div>
+</div>
+
+{% set rc_map = {'bull_trend':'success','bear_trend':'danger','lateral':'secondary','high_vol':'warning','low_vol':'info','breakout_env':'primary','reversal_env':'warning','defensive':'dark'} %}
+<div class="alert alert-{{ rc_map.get(regime.regime,'secondary') }} d-inline-flex align-items-center gap-2 py-2 mb-3">
+  <i class="bi bi-activity"></i>
+  <span>Regime: <strong>{{ regime.label }}</strong></span>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover table-sm mb-0" id="radarTable">
+        <thead class="table-dark sticky-top">
+          <tr>
+            <th>#</th>
+            <th>Ticker</th>
+            <th>Ação</th>
+            <th>Setup</th>
+            <th>Prob.</th>
+            <th>EV (R)</th>
+            <th>R:R</th>
+            <th>F.Score</th>
+            <th>Score</th>
+            <th>Entrada</th>
+            <th>Stop</th>
+            <th>Alvo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in ranking %}
+          <tr class="radar-row" data-action="{{ r.action }}" onclick="window.location='/asset/{{ r.ticker }}'" style="cursor:pointer">
+            <td class="text-muted">{{ r.rank_position }}</td>
+            <td><strong>{{ r.ticker }}</strong></td>
+            <td><span class="badge {{ action_badge(r.action) }}">{{ r.action_label or r.action }}</span></td>
+            <td class="small text-muted">{{ r.setup_name or '—' }}</td>
+            <td>{% if r.probability %}<span class="{% if r.probability >= 0.6 %}text-success{% elif r.probability >= 0.5 %}text-warning{% else %}text-danger{% endif %}">{{ "%.0f"|format(r.probability*100) }}%</span>{% else %}—{% endif %}</td>
+            <td>{% if r.expected_value %}<span class="{% if r.expected_value >= 0.3 %}text-success fw-semibold{% elif r.expected_value >= 0 %}text-warning{% else %}text-danger{% endif %}">{{ "%.2f"|format(r.expected_value) }}R</span>{% else %}—{% endif %}</td>
+            <td>{% if r.risk_reward %}{{ "%.1f"|format(r.risk_reward) }}:1{% else %}—{% endif %}</td>
+            <td>
+              {% if r.fundamental_score %}
+              <span class="badge bg-{{ 'success' if r.fundamental_score >= 0.65 else ('warning' if r.fundamental_score >= 0.5 else 'danger') }}">
+                {{ r.fundamental_grade or '?' }}
+              </span>
+              {% else %}—{% endif %}
+            </td>
+            <td>
+              <div class="d-flex align-items-center gap-1">
+                <div class="progress flex-grow-1" style="height:6px">
+                  <div class="progress-bar {{ 'bg-success' if r.composite_score >= 60 else ('bg-warning' if r.composite_score >= 40 else 'bg-danger') }}" style="width:{{ r.composite_score or 0 }}%"></div>
+                </div>
+                <small>{{ "%.0f"|format(r.composite_score or 0) }}</small>
+              </div>
+            </td>
+            <td>{% if r.entry_price %}R$ {{ "%.2f"|format(r.entry_price) }}{% else %}—{% endif %}</td>
+            <td>{% if r.stop_price %}<span class="text-danger">{{ "%.2f"|format(r.stop_price) }}</span>{% else %}—{% endif %}</td>
+            <td>{% if r.target_price %}<span class="text-success">{{ "%.2f"|format(r.target_price) }}</span>{% else %}—{% endif %}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="12" class="text-center text-muted py-4">Nenhum dado. Execute o scan no Dashboard.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterTable() {
+  const val = document.getElementById('filterAction').value;
+  document.querySelectorAll('.radar-row').forEach(tr => {
+    tr.style.display = (!val || tr.dataset.action === val) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

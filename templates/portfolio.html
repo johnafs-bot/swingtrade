@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+{% block title %}Carteira{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <h4><i class="bi bi-briefcase text-primary me-2"></i>Carteira</h4>
+  <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#addPositionModal">
+    <i class="bi bi-plus-circle me-1"></i>Adicionar Posição
+  </button>
+</div>
+
+<!-- Summary Cards -->
+{% set s = summary %}
+<div class="row g-3 mb-4">
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="text-muted small">Capital Total</div>
+      <div class="fs-5 fw-bold">R$ {{ "{:,.0f}".format(s.total_capital or 0).replace(',','.') }}</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="text-muted small">Investido</div>
+      <div class="fs-5 fw-bold">R$ {{ "{:,.0f}".format(s.total_invested or 0).replace(',','.') }}</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="text-muted small">Valor Atual</div>
+      <div class="fs-5 fw-bold">R$ {{ "{:,.0f}".format(s.total_value or 0).replace(',','.') }}</div>
+    </div>
+  </div>
+  <div class="col-sm-6 col-lg-3">
+    <div class="card border-0 shadow-sm text-center p-3">
+      <div class="text-muted small">Resultado Total</div>
+      <div class="fs-5 fw-bold {% if (s.total_pnl or 0) >= 0 %}text-success{% else %}text-danger{% endif %}">
+        R$ {{ "{:,.0f}".format(s.total_pnl or 0).replace(',','.') }}
+        <span class="fs-6">({{ "%.1f"|format(s.total_pnl_pct or 0) }}%)</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if s.positions %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead class="table-dark">
+          <tr>
+            <th>Ticker</th><th>Qtd.</th><th>PM</th><th>Atual</th>
+            <th>Stop</th><th>Alvo</th><th>PnL</th><th>PnL%</th>
+            <th>Setup</th><th>Data</th><th>Ação</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for pos in s.positions %}
+          {% set curr = pos.current_price or pos.avg_price %}
+          {% set pnl = (curr - pos.avg_price) * pos.quantity %}
+          {% set pnl_pct = (curr - pos.avg_price) / pos.avg_price * 100 if pos.avg_price else 0 %}
+          <tr>
+            <td><a href="/asset/{{ pos.ticker }}" class="fw-bold text-decoration-none">{{ pos.ticker }}</a></td>
+            <td>{{ pos.quantity }}</td>
+            <td>R$ {{ "%.2f"|format(pos.avg_price) }}</td>
+            <td>R$ {{ "%.2f"|format(curr) }}</td>
+            <td class="text-danger">{% if pos.stop_price %}{{ "%.2f"|format(pos.stop_price) }}{% else %}—{% endif %}</td>
+            <td class="text-success">{% if pos.target_price %}{{ "%.2f"|format(pos.target_price) }}{% else %}—{% endif %}</td>
+            <td class="{% if pnl >= 0 %}text-success{% else %}text-danger{% endif %}">R$ {{ "{:,.0f}".format(pnl).replace(',','.') }}</td>
+            <td class="{% if pnl_pct >= 0 %}text-success{% else %}text-danger{% endif %}">{{ "%+.1f"|format(pnl_pct) }}%</td>
+            <td class="small text-muted">{{ pos.setup_name or '—' }}</td>
+            <td class="small text-muted">{{ pos.date_opened or '—' }}</td>
+            <td>
+              <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
+                      data-bs-target="#closeModal" data-id="{{ pos.id }}"
+                      data-ticker="{{ pos.ticker }}" data-curr="{{ curr }}">
+                Encerrar
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% if s.sector_exposure %}
+<div class="card border-0 shadow-sm mt-3">
+  <div class="card-header bg-transparent fw-semibold small"><i class="bi bi-pie-chart me-1"></i>Exposição por Setor</div>
+  <div class="card-body">
+    {% for sector, val in s.sector_exposure.items() %}
+    {% set pct = val / (s.total_value or 1) * 100 %}
+    <div class="d-flex justify-content-between align-items-center mb-2 small">
+      <span>{{ sector }}</span>
+      <div class="d-flex align-items-center gap-2">
+        <div class="progress" style="width:120px;height:8px">
+          <div class="progress-bar {{ 'bg-danger' if pct > 30 else ('bg-warning' if pct > 20 else 'bg-success') }}" style="width:{{ [pct,100]|min }}%"></div>
+        </div>
+        <span class="fw-semibold">{{ "%.1f"|format(pct) }}%</span>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+{% else %}
+<div class="text-center py-5 text-muted">
+  <i class="bi bi-briefcase fs-1 d-block mb-3 opacity-25"></i>
+  <p>Carteira vazia. Adicione suas posições para monitoramento.</p>
+</div>
+{% endif %}
+
+<!-- Add Position Modal -->
+<div class="modal fade" id="addPositionModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Adicionar Posição</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form action="/portfolio/add" method="POST">
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-6">
+              <label class="form-label small">Ticker</label>
+              <input name="ticker" class="form-control" placeholder="PETR4" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Quantidade</label>
+              <input name="quantity" type="number" min="1" class="form-control" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Preço Médio (R$)</label>
+              <input name="avg_price" type="number" step="0.01" class="form-control" required>
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Stop (R$)</label>
+              <input name="stop_price" type="number" step="0.01" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Alvo (R$)</label>
+              <input name="target_price" type="number" step="0.01" class="form-control">
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Setup</label>
+              <select name="setup_name" class="form-select">
+                <option value="manual">Manual</option>
+                <option value="breakout_consolidacao">Rompimento</option>
+                <option value="pullback_tendencia">Pullback</option>
+                <option value="continuacao_momentum">Momentum</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label small">Notas</label>
+              <textarea name="notes" class="form-control" rows="2"></textarea>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-success">Adicionar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- Close Position Modal -->
+<div class="modal fade" id="closeModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title">Encerrar Posição</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="closeForm" action="" method="POST">
+        <div class="modal-body">
+          <p>Encerrando posição em <strong id="closeTickerName"></strong></p>
+          <label class="form-label">Preço de Saída (R$)</label>
+          <input id="closePriceInput" name="close_price" type="number" step="0.01" class="form-control" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+          <button type="submit" class="btn btn-danger">Encerrar</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('closeModal').addEventListener('show.bs.modal', function(e) {
+  const btn = e.relatedTarget;
+  document.getElementById('closeForm').action = '/portfolio/close/' + btn.dataset.id;
+  document.getElementById('closeTickerName').textContent = btn.dataset.ticker;
+  document.getElementById('closePriceInput').value = btn.dataset.curr;
+});
+</script>
+{% endblock %}

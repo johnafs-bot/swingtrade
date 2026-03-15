@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Perfil e Configuração{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <h4 class="mb-4"><i class="bi bi-gear text-secondary me-2"></i>Perfil do Investidor</h4>
+
+    <form action="/profile" method="POST">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-semibold"><i class="bi bi-wallet2 me-1"></i>Capital</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small">Capital Total (R$)</label>
+              <input name="total_capital" type="number" step="1000" min="1000" class="form-control"
+                     value="{{ profile.total_capital or 100000 }}" required>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Capital Livre (R$)</label>
+              <input name="free_capital" type="number" step="1000" min="0" class="form-control"
+                     value="{{ profile.free_capital or 100000 }}" required>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-semibold"><i class="bi bi-shield-check me-1"></i>Risco e Horizonte</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label small">Risco por Operação (%)</label>
+              <input name="risk_per_trade_pct" type="number" step="0.1" min="0.1" max="5" class="form-control"
+                     value="{{ profile.risk_per_trade_pct or 1.0 }}" required>
+              <div class="form-text">% da carteira total por operação</div>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Perda Máxima Aceita (%)</label>
+              <input name="max_loss_pct" type="number" step="1" min="1" max="50" class="form-control"
+                     value="{{ profile.max_loss_pct or 10 }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Horizonte Máximo (dias)</label>
+              <input name="horizon_days" type="number" step="1" min="5" max="180" class="form-control"
+                     value="{{ profile.horizon_days or 90 }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Máximo de Posições</label>
+              <input name="max_positions" type="number" step="1" min="1" max="20" class="form-control"
+                     value="{{ profile.max_positions or 10 }}" required>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Tolerância à Volatilidade</label>
+              <select name="volatility_tolerance" class="form-select">
+                <option value="low" {% if profile.volatility_tolerance=='low' %}selected{% endif %}>Baixa</option>
+                <option value="medium" {% if profile.volatility_tolerance=='medium' %}selected{% endif %}>Média</option>
+                <option value="high" {% if profile.volatility_tolerance=='high' %}selected{% endif %}>Alta</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent fw-semibold"><i class="bi bi-sliders me-1"></i>Estratégia</div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label small">Estratégia Principal</label>
+              <select name="strategy" class="form-select">
+                <option value="mixed" {% if profile.strategy=='mixed' %}selected{% endif %}>Mista (técnica + fundamentos)</option>
+                <option value="technical" {% if profile.strategy=='technical' %}selected{% endif %}>Puramente Técnica</option>
+                <option value="fundamental" {% if profile.strategy=='fundamental' %}selected{% endif %}>Fundamentalista com timing</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label small">Setups Preferidos</label>
+              <select name="preferred_setups" class="form-select">
+                <option value="all">Todos</option>
+                <option value="breakout">Rompimento</option>
+                <option value="pullback">Pullback</option>
+                <option value="momentum">Momentum</option>
+                <option value="reversal">Reversão</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label small">Setores Proibidos (separados por vírgula)</label>
+              <input name="forbidden_sectors" class="form-control" placeholder="ex: Tecnologia, Financeiro"
+                     value="{{ profile.forbidden_sectors or '' }}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-grid">
+        <button type="submit" class="btn btn-success btn-lg">
+          <i class="bi bi-floppy me-1"></i>Salvar Perfil
+        </button>
+      </div>
+    </form>
+
+    <!-- Info Box -->
+    <div class="card border-0 shadow-sm mt-4 bg-light">
+      <div class="card-body small text-muted">
+        <strong><i class="bi bi-info-circle me-1"></i>Como o perfil influencia o sistema:</strong>
+        <ul class="mt-2 mb-0">
+          <li><strong>Capital Total:</strong> base para cálculo de risco monetário por operação</li>
+          <li><strong>Risco por Operação:</strong> define tamanho máximo de posição via Kelly e risco</li>
+          <li><strong>Máximo de Posições:</strong> impede abertura de novas posições acima do limite</li>
+          <li><strong>Horizonte Máximo:</strong> filtra setups incompatíveis com seu prazo</li>
+          <li><strong>Setores Proibidos:</strong> exclui automaticamente ativos desses setores</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
