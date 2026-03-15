@@ -12,12 +12,16 @@ from typing import Optional
 
 import pandas as pd
 import yfinance as yf
+from curl_cffi import requests as cffi_requests
 
 from database.connection import get_connection
 from modules.universe import B3_UNIVERSE, get_all_tickers
 import config
 
 logger = logging.getLogger(__name__)
+
+# Sessão curl_cffi que impersona Chrome — contorna bloqueio TLS do Yahoo Finance
+_YF_SESSION = cffi_requests.Session(impersonate="chrome110")
 
 
 # ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -55,6 +59,7 @@ def fetch_ohlcv(ticker: str, start: str, end: str = None) -> pd.DataFrame:
             auto_adjust=True,
             progress=False,
             multi_level_index=False,  # yfinance >= 0.2.40 flat columns
+            session=_YF_SESSION,
         )
         if df.empty:
             return pd.DataFrame()
@@ -158,32 +163,121 @@ def update_ohlcv(ticker: str, full: bool = False):
     return n
 
 
-def bulk_update_ohlcv(tickers: list = None, full: bool = False, delay: float = 0.3):
-    """Update OHLCV for all (or specified) tickers."""
+def batch_fetch_ohlcv(tickers: list, start: str, end: str = None) -> pd.DataFrame:
+    """
+    Baixa OHLCV de múltiplos tickers em uma única chamada yf.download.
+    Retorna DataFrame no formato longo: ticker, date, open, high, low, close, volume.
+    """
+    yf_symbols = [_yf_ticker(t) for t in tickers]
+    end = end or datetime.today().strftime("%Y-%m-%d")
+    try:
+        raw = yf.download(
+            yf_symbols,
+            start=start,
+            end=end,
+            auto_adjust=True,
+            progress=False,
+            group_by="ticker",
+            session=_YF_SESSION,
+        )
+        if raw.empty:
+            return pd.DataFrame()
+
+        frames = []
+        for sym, ticker in zip(yf_symbols, tickers):
+            try:
+                if raw.columns.nlevels == 2:
+                    if sym not in raw.columns.get_level_values(0):
+                        continue
+                    sub = raw[sym].copy().reset_index()
+                else:
+                    # Apenas 1 ticker retornado como flat
+                    sub = raw.copy().reset_index()
+
+                sub.columns = [str(c).lower().replace(" ", "_") for c in sub.columns]
+                rename = {}
+                for c in sub.columns:
+                    if "date" in c:      rename[c] = "date"
+                    elif c == "open":    rename[c] = "open"
+                    elif c == "high":    rename[c] = "high"
+                    elif c == "low":     rename[c] = "low"
+                    elif c == "close":   rename[c] = "close"
+                    elif c == "volume":  rename[c] = "volume"
+                sub = sub.rename(columns=rename)
+                sub["ticker"] = ticker
+                sub["adj_close"] = sub.get("close", pd.Series(dtype=float))
+                sub["date"] = pd.to_datetime(sub["date"]).dt.strftime("%Y-%m-%d")
+                needed = ["ticker", "date", "open", "high", "low", "close", "volume", "adj_close"]
+                for col in needed:
+                    if col not in sub.columns:
+                        sub[col] = None
+                sub = sub[needed].dropna(subset=["close"])
+                frames.append(sub)
+            except Exception as e:
+                logger.warning(f"Unpack error {ticker}: {e}")
+
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
+
+    except Exception as e:
+        logger.error(f"batch_fetch_ohlcv error: {e}")
+        return pd.DataFrame()
+
+
+def bulk_update_ohlcv(tickers: list = None, full: bool = False, delay: float = 1.0):
+    """Atualiza OHLCV para todos os tickers usando download em lotes de 30."""
     tickers = tickers or list(B3_UNIVERSE.keys())
+
+    # Garantir que BOVA11 está na lista (benchmark obrigatório)
+    if "BOVA11" not in tickers:
+        tickers = list(tickers) + ["BOVA11"]
+
+    # Calcular data de início por ticker
+    today = datetime.today().strftime("%Y-%m-%d")
+    start_map = {}
+    for t in tickers:
+        last = _last_stored_date(t)
+        if full or not last:
+            start_map[t] = (datetime.today() - timedelta(days=config.HISTORY_YEARS * 365)).strftime("%Y-%m-%d")
+        else:
+            nxt = (datetime.strptime(last, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
+            start_map[t] = nxt
+
+    # Filtrar tickers que já estão atualizados
+    pending = [t for t in tickers if start_map[t] < today]
+    if not pending:
+        logger.info("Todos os tickers já estão atualizados.")
+        return {"total_rows": 0, "errors": 0}
+
+    BATCH = 30
     total = 0
     errors = 0
-    for i, ticker in enumerate(tickers):
+
+    for i in range(0, len(pending), BATCH):
+        batch = pending[i:i + BATCH]
+        batch_start = min(start_map[t] for t in batch)
         try:
-            n = update_ohlcv(ticker, full=full)
-            total += n
+            df = batch_fetch_ohlcv(batch, start=batch_start)
+            if not df.empty:
+                # Filtrar cada ticker pelo seu start individual
+                rows = []
+                for t in batch:
+                    sub = df[df["ticker"] == t]
+                    sub = sub[sub["date"] >= start_map[t]]
+                    if not sub.empty:
+                        rows.append(sub)
+                if rows:
+                    df_filtered = pd.concat(rows, ignore_index=True)
+                    n = store_ohlcv(df_filtered)
+                    total += n
+                    logger.info(f"Batch {i//BATCH + 1}: {n} linhas armazenadas para {len(batch)} tickers")
         except Exception as e:
-            logger.error(f"Error updating {ticker}: {e}")
-            errors += 1
-        if delay and i % 10 == 9:
-            time.sleep(delay)
+            logger.error(f"Erro no batch {batch}: {e}")
+            errors += len(batch)
+        time.sleep(delay)
 
-    # Also update Ibovespa benchmark
-    try:
-        df = fetch_ohlcv("BOVA11", (
-            datetime.today() - timedelta(days=config.HISTORY_YEARS * 365)
-        ).strftime("%Y-%m-%d") if full else _last_stored_date("BOVA11") or "2020-01-01")
-        if not df.empty:
-            store_ohlcv(df)
-    except Exception as e:
-        logger.error(f"Benchmark update error: {e}")
-
-    logger.info(f"Bulk OHLCV update done: {total} rows, {errors} errors.")
+    logger.info(f"Bulk OHLCV done: {total} linhas, {errors} erros.")
     return {"total_rows": total, "errors": errors}
 
 

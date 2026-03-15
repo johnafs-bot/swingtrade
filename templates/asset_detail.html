@@ -135,12 +135,33 @@
     {% endif %}
   </div>
 
-  <!-- Chart + Indicators -->
+  <!-- Charts + Indicators -->
   <div class="col-lg-8">
+
+    <!-- Gráfico de Preço + BB + EMAs -->
+    <div class="card border-0 shadow-sm mb-2">
+      <div class="card-header bg-transparent fw-semibold small d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-graph-up me-1"></i>Preço · BB · EMA (120 dias)</span>
+        <span class="text-muted" style="font-size:.7rem">SMA20 · SMA50 · EMA9 · EMA21 · BB</span>
+      </div>
+      <div class="card-body p-2">
+        <canvas id="priceChart" height="140"></canvas>
+      </div>
+    </div>
+
+    <!-- Volume -->
+    <div class="card border-0 shadow-sm mb-2">
+      <div class="card-header bg-transparent fw-semibold small"><i class="bi bi-bar-chart me-1"></i>Volume</div>
+      <div class="card-body p-2">
+        <canvas id="volumeChart" height="55"></canvas>
+      </div>
+    </div>
+
+    <!-- MACD -->
     <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-transparent fw-semibold small"><i class="bi bi-graph-up me-1"></i>Preço de Fechamento (120 dias)</div>
-      <div class="card-body">
-        <canvas id="priceChart" height="130"></canvas>
+      <div class="card-header bg-transparent fw-semibold small"><i class="bi bi-activity me-1"></i>MACD (12/26/9)</div>
+      <div class="card-body p-2">
+        <canvas id="macdChart" height="75"></canvas>
       </div>
     </div>
 
@@ -149,6 +170,8 @@
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent fw-semibold small"><i class="bi bi-sliders me-1"></i>Indicadores Técnicos</div>
       <div class="card-body">
+
+        <!-- Bloco 1: RSI, ATR, Volatilidade, Volume Relativo, Tendências, Força Relativa -->
         <div class="row g-2 small">
           <div class="col-md-3 col-6">
             <div class="text-muted">RSI(14)</div>
@@ -207,6 +230,111 @@
             <div class="fw-bold">{% if indicators.sma200 %}{{ "%.2f"|format(indicators.sma200) }}{% else %}—{% endif %}</div>
           </div>
         </div>
+
+        <hr class="my-2">
+
+        <!-- Bloco 2: EMA, ADX, Momentum -->
+        <div class="row g-2 small">
+          <div class="col-md-3 col-6">
+            <div class="text-muted">EMA(9)</div>
+            <div class="fw-bold">{% if indicators.ema9 %}{{ "%.2f"|format(indicators.ema9) }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="text-muted">EMA(21)</div>
+            <div class="fw-bold">{% if indicators.ema21 %}{{ "%.2f"|format(indicators.ema21) }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="text-muted">ADX(14)</div>
+            <div class="fw-bold {% if (indicators.adx or 0) > 25 %}text-success{% else %}text-muted{% endif %}">
+              {% if indicators.adx %}{{ "%.1f"|format(indicators.adx) }}{% else %}—{% endif %}
+            </div>
+            <div style="font-size:.65rem" class="text-muted">{% if (indicators.adx or 0) > 25 %}Tendência forte{% else %}Fraca/lateral{% endif %}</div>
+          </div>
+          <div class="col-md-3 col-6">
+            <div class="text-muted">Momentum(20d)</div>
+            <div class="fw-bold {% if (indicators.momentum or 0) > 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if indicators.momentum %}{{ "%+.1f"|format(indicators.momentum*100) }}%{% else %}—{% endif %}
+            </div>
+          </div>
+        </div>
+
+        <hr class="my-2">
+
+        <!-- Bloco 3: Bollinger Bands -->
+        <div class="row g-2 small">
+          <div class="col-12 text-muted fw-semibold mb-1">Bandas de Bollinger (BB20)</div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">Superior</div>
+            <div class="fw-bold text-danger">{% if indicators.bb_upper %}{{ "%.2f"|format(indicators.bb_upper) }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">Média (SMA20)</div>
+            <div class="fw-bold">{% if indicators.bb_middle %}{{ "%.2f"|format(indicators.bb_middle) }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">Inferior</div>
+            <div class="fw-bold text-success">{% if indicators.bb_lower %}{{ "%.2f"|format(indicators.bb_lower) }}{% else %}—{% endif %}</div>
+          </div>
+          {% if indicators.bb_upper and indicators.bb_lower and indicators.sma20 %}
+          <div class="col-12">
+            {% set bb_range = (indicators.bb_upper - indicators.bb_lower) %}
+            {% set bb_pos = ((indicators.sma20 - indicators.bb_lower) / bb_range * 100) if bb_range > 0 else 50 %}
+            <div class="text-muted" style="font-size:.65rem">Posição do preço na banda: {{ "%.0f"|format(bb_pos) }}%</div>
+            <div class="progress mt-1" style="height:6px">
+              <div class="progress-bar bg-info" style="width:{{ [bb_pos|int, 100]|min }}%"></div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+        <hr class="my-2">
+
+        <!-- Bloco 4: MACD -->
+        <div class="row g-2 small">
+          <div class="col-12 text-muted fw-semibold mb-1">MACD (12/26/9)</div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">Linha MACD</div>
+            <div class="fw-bold {% if (indicators.macd or 0) > 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if indicators.macd is not none %}{{ "%.4f"|format(indicators.macd) }}{% else %}—{% endif %}
+            </div>
+          </div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">Sinal</div>
+            <div class="fw-bold">{% if indicators.macd_signal is not none %}{{ "%.4f"|format(indicators.macd_signal) }}{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">Histograma</div>
+            <div class="fw-bold {% if (indicators.macd_hist or 0) > 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if indicators.macd_hist is not none %}{{ "%+.4f"|format(indicators.macd_hist) }}{% else %}—{% endif %}
+            </div>
+          </div>
+        </div>
+
+        <hr class="my-2">
+
+        <!-- Bloco 5: Distâncias às Médias -->
+        <div class="row g-2 small">
+          <div class="col-12 text-muted fw-semibold mb-1">Distância às Médias Móveis</div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">Dist. SMA20</div>
+            <div class="fw-bold {% if (indicators.dist_sma20 or 0) > 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if indicators.dist_sma20 is not none %}{{ "%+.1f"|format(indicators.dist_sma20*100) }}%{% else %}—{% endif %}
+            </div>
+          </div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">Dist. SMA50</div>
+            <div class="fw-bold {% if (indicators.dist_sma50 or 0) > 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if indicators.dist_sma50 is not none %}{{ "%+.1f"|format(indicators.dist_sma50*100) }}%{% else %}—{% endif %}
+            </div>
+          </div>
+          <div class="col-md-4 col-6">
+            <div class="text-muted">Dist. SMA200</div>
+            <div class="fw-bold {% if (indicators.dist_sma200 or 0) > 0 %}text-success{% else %}text-danger{% endif %}">
+              {% if indicators.dist_sma200 is not none %}{{ "%+.1f"|format(indicators.dist_sma200*100) }}%{% else %}—{% endif %}
+            </div>
+          </div>
+        </div>
+
       </div>
     </div>
     {% endif %}
@@ -239,29 +367,97 @@
 
 {% block scripts %}
 <script>
-const chartData = {{ chart_data | tojson }};
-if (chartData && chartData.dates) {
+const C = {{ chart_data | tojson }};
+
+const sharedX = {
+  ticks: { maxTicksLimit: 8, font: { size: 9 } },
+  grid: { display: false }
+};
+const nullFill = arr => (arr || []).map(v => (v == null || isNaN(v)) ? NaN : v);
+
+if (C && C.dates) {
+  // ── 1. Gráfico de Preço + BB + EMAs ──────────────────────────────────────
   new Chart(document.getElementById('priceChart'), {
     type: 'line',
     data: {
-      labels: chartData.dates,
+      labels: C.dates,
+      datasets: [
+        { label: '{{ ticker }}', data: nullFill(C.closes),
+          borderColor: '#198754', backgroundColor: 'rgba(25,135,84,.06)',
+          borderWidth: 2, pointRadius: 0, fill: true, tension: 0.1, order: 1 },
+        { label: 'SMA20', data: nullFill(C.sma20),
+          borderColor: '#ffc107', borderWidth: 1.5, pointRadius: 0, fill: false, order: 2 },
+        { label: 'SMA50', data: nullFill(C.sma50),
+          borderColor: '#0d6efd', borderWidth: 1.5, pointRadius: 0, fill: false, order: 3 },
+        { label: 'EMA9',  data: nullFill(C.ema9),
+          borderColor: '#fd7e14', borderWidth: 1, pointRadius: 0,
+          fill: false, borderDash: [4,2], order: 4 },
+        { label: 'EMA21', data: nullFill(C.ema21),
+          borderColor: '#6f42c1', borderWidth: 1, pointRadius: 0,
+          fill: false, borderDash: [4,2], order: 5 },
+        { label: 'BB Sup', data: nullFill(C.bb_upper),
+          borderColor: 'rgba(108,117,125,.5)', borderWidth: 1,
+          pointRadius: 0, fill: false, borderDash: [2,2], order: 6 },
+        { label: 'BB Inf', data: nullFill(C.bb_lower),
+          borderColor: 'rgba(108,117,125,.5)', borderWidth: 1,
+          pointRadius: 0, fill: '-1',
+          backgroundColor: 'rgba(108,117,125,.07)', borderDash: [2,2], order: 7 },
+      ]
+    },
+    options: {
+      responsive: true, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { boxWidth: 10, font: { size: 9 } } } },
+      scales: {
+        x: sharedX,
+        y: { ticks: { font: { size: 9 } } }
+      }
+    }
+  });
+
+  // ── 2. Volume ─────────────────────────────────────────────────────────────
+  new Chart(document.getElementById('volumeChart'), {
+    type: 'bar',
+    data: {
+      labels: C.dates,
       datasets: [{
-        label: '{{ ticker }}',
-        data: chartData.closes,
-        borderColor: '#198754',
-        backgroundColor: 'rgba(25,135,84,.08)',
-        borderWidth: 2,
-        pointRadius: 0,
-        fill: true,
-        tension: 0.2,
+        label: 'Volume', data: C.volumes,
+        backgroundColor: 'rgba(13,110,253,.35)', borderWidth: 0
       }]
     },
     options: {
-      responsive: true,
+      responsive: true, animation: false,
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { maxTicksLimit: 8, font: { size: 10 } }, grid: { display: false } },
-        y: { ticks: { font: { size: 10 } } }
+        x: { ...sharedX, ticks: { maxTicksLimit: 6, font: { size: 8 } } },
+        y: { ticks: { font: { size: 8 },
+               callback: v => v >= 1e6 ? (v/1e6).toFixed(1)+'M' : (v >= 1e3 ? (v/1e3).toFixed(0)+'K' : v) } }
+      }
+    }
+  });
+
+  // ── 3. MACD ───────────────────────────────────────────────────────────────
+  const histColors = nullFill(C.macd_hist).map(v => isNaN(v) ? 'transparent' : (v >= 0 ? 'rgba(25,135,84,.65)' : 'rgba(220,53,69,.65)'));
+  new Chart(document.getElementById('macdChart'), {
+    type: 'bar',
+    data: {
+      labels: C.dates,
+      datasets: [
+        { type: 'bar',  label: 'Hist.',  data: nullFill(C.macd_hist),
+          backgroundColor: histColors, borderWidth: 0, order: 3 },
+        { type: 'line', label: 'MACD',   data: nullFill(C.macd),
+          borderColor: '#0d6efd', borderWidth: 1.5, pointRadius: 0, fill: false, order: 1 },
+        { type: 'line', label: 'Sinal',  data: nullFill(C.macd_sig),
+          borderColor: '#dc3545', borderWidth: 1.5, pointRadius: 0, fill: false, order: 2 },
+      ]
+    },
+    options: {
+      responsive: true, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { labels: { boxWidth: 10, font: { size: 9 } } } },
+      scales: {
+        x: { ...sharedX, ticks: { maxTicksLimit: 6, font: { size: 8 } } },
+        y: { ticks: { font: { size: 8 } } }
       }
     }
   });

@@ -195,6 +195,7 @@ def _compute_stats(ticker: str, trades: list,
         "sharpe_ratio":  round(sharpe, 3),
         "avg_duration":  round(avg_dur, 1),
         "trades":        trades[:50],  # limit for storage
+        "equity_curve":  [round(v, 2) for v in equity_curve],
         "params":        params or {},
     }
     return result

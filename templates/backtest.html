@@ -66,6 +66,11 @@
           <div class="col-6">Perda média: <strong class="text-danger">{{ "%.2f"|format(r.avg_loss or 0) }}%</strong></div>
         </div>
         <div class="small text-muted mt-1">Criado: {{ r.created_at[:10] if r.created_at else '—' }}</div>
+
+        <!-- Equity curve placeholder (preenchido via JS após rodar backtest) -->
+        <canvas id="equity-{{ loop.index }}" height="60" class="mt-2 d-none"></canvas>
+        <!-- Trade list placeholder -->
+        <div id="trades-{{ r.setup_name }}"></div>
       </div>
     </div>
   </div>
@@ -77,6 +82,9 @@
 </div>
 {% endif %}
 
+<!-- Área de resultados do backtest recém executado (preenchida via JS) -->
+<div id="freshResults" class="row g-3 mb-4"></div>
+
 <!-- Modal -->
 <div class="modal fade" id="runBacktestModal" tabindex="-1">
   <div class="modal-dialog">
@@ -85,7 +93,7 @@
       <div class="modal-body">
         <div class="mb-3">
           <label class="form-label small">Tickers (separados por vírgula)</label>
-          <input id="btTickers" class="form-control" value="PETR4,VALE3,ITUB4,BBDC4,ABEV3,WEGE3,SUZB3,KLBN11">
+          <input id="btTickers" class="form-control" value="PETR4,VALE3,ITUB4,BBDC4,ABEV3">
         </div>
         <div class="row g-2">
           <div class="col">
@@ -98,12 +106,12 @@
           </div>
         </div>
         <div class="alert alert-warning mt-3 small">
-          <i class="bi bi-clock me-1"></i>O backtest pode demorar vários minutos dependendo dos tickers e período.
+          <i class="bi bi-clock me-1"></i>O backtest pode demorar vários minutos. Os resultados aparecem ao término.
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-        <button class="btn btn-primary" onclick="runBacktest()"><i class="bi bi-play-fill me-1"></i>Executar</button>
+        <button id="btnRunBt" class="btn btn-primary" onclick="runBacktest()"><i class="bi bi-play-fill me-1"></i>Executar</button>
       </div>
     </div>
   </div>
@@ -113,12 +121,13 @@
 {% block scripts %}
 <script>
 function runBacktest() {
-  const tickers = document.getElementById('btTickers').value.split(',').map(t => t.trim());
+  const tickers = document.getElementById('btTickers').value.split(',').map(t => t.trim()).filter(Boolean);
   const start   = document.getElementById('btStart').value;
   const end     = document.getElementById('btEnd').value;
+  const btn     = document.getElementById('btnRunBt');
 
-  document.querySelector('#runBacktestModal .modal-footer .btn-primary').disabled = true;
-  document.querySelector('#runBacktestModal .modal-footer .btn-primary').textContent = 'Executando...';
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Executando...';
 
   fetch('/api/backtest/run', {
     method: 'POST',
@@ -127,17 +136,110 @@ function runBacktest() {
   })
   .then(r => r.json())
   .then(d => {
-    if (d.status === 'ok') {
-      alert('Backtest concluído!');
-      location.reload();
-    } else {
-      alert('Erro: ' + d.message);
-    }
+    if (d.status !== 'ok') { alert('Erro: ' + (d.message||d.status)); return; }
+
+    // Fechar modal
+    bootstrap.Modal.getInstance(document.getElementById('runBacktestModal'))?.hide();
+
+    // Renderizar cards de resultado frescos
+    const container = document.getElementById('freshResults');
+    container.innerHTML = '';
+    let idx = 0;
+    Object.entries(d.results).forEach(([setupName, res]) => {
+      idx++;
+      const winColor  = (res.total_return || 0) >= 0 ? '#198754' : '#dc3545';
+      const winBg     = (res.total_return || 0) >= 0 ? 'rgba(25,135,84,.1)' : 'rgba(220,53,69,.1)';
+      const canvasId  = 'fresh-equity-' + idx;
+      const tradesId  = 'fresh-trades-' + idx;
+      const label     = setupName.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+
+      container.innerHTML += `
+        <div class="col-lg-6">
+          <div class="card border-0 shadow-sm border-top border-3 border-primary">
+            <div class="card-header bg-transparent fw-semibold">
+              <i class="bi bi-crosshair me-1"></i>${label}
+              <span class="badge bg-${(res.total_return||0)>=0?'success':'danger'} ms-2">${(res.total_return||0)>=0?'+':''}${(res.total_return||0).toFixed(1)}%</span>
+            </div>
+            <div class="card-body">
+              <div class="row g-2 text-center small">
+                <div class="col-3"><div class="text-muted">Trades</div><div class="fw-bold">${res.total_trades||0}</div></div>
+                <div class="col-3"><div class="text-muted">Acerto</div><div class="fw-bold ${(res.win_rate||0)>=0.5?'text-success':'text-danger'}">${((res.win_rate||0)*100).toFixed(0)}%</div></div>
+                <div class="col-3"><div class="text-muted">Payoff</div><div class="fw-bold">${(res.payoff||0).toFixed(2)}</div></div>
+                <div class="col-3"><div class="text-muted">Sharpe</div><div class="fw-bold">${(res.sharpe_ratio||0).toFixed(2)}</div></div>
+                <div class="col-4"><div class="text-muted">EV</div><div class="fw-bold ${(res.expected_value||0)>=0?'text-success':'text-danger'}">${(res.expected_value||0).toFixed(2)}%</div></div>
+                <div class="col-4"><div class="text-muted">Drawdown</div><div class="fw-bold text-danger">${(res.max_drawdown||0).toFixed(1)}%</div></div>
+                <div class="col-4"><div class="text-muted">Duração Méd.</div><div class="fw-bold">${(res.avg_duration||0).toFixed(0)}d</div></div>
+              </div>
+              <hr class="my-2">
+              <div class="row g-2 small text-muted">
+                <div class="col-6">Ganho médio: <strong class="text-success">${(res.avg_gain_pct||0).toFixed(2)}%</strong></div>
+                <div class="col-6">Perda média: <strong class="text-danger">${(res.avg_loss_pct||0).toFixed(2)}%</strong></div>
+              </div>
+              <canvas id="${canvasId}" height="70" class="mt-2"></canvas>
+              <div id="${tradesId}" class="mt-2"></div>
+            </div>
+          </div>
+        </div>`;
+
+      // Desenhar equity curve
+      setTimeout(() => {
+        const ec = res.equity_curve || [];
+        if (ec.length < 2) return;
+        new Chart(document.getElementById(canvasId), {
+          type: 'line',
+          data: {
+            labels: ec.map((_, i) => i),
+            datasets: [{
+              label: 'Equity',
+              data: ec,
+              borderColor: winColor,
+              backgroundColor: winBg,
+              borderWidth: 1.5, pointRadius: 0, fill: true, tension: 0.1
+            }]
+          },
+          options: {
+            responsive: true, animation: false,
+            plugins: { legend: { display: false } },
+            scales: {
+              x: { display: false },
+              y: { ticks: { font: { size: 8 }, callback: v => v.toFixed(0) } }
+            }
+          }
+        });
+
+        // Tabela de trades
+        const trades = res.trades || [];
+        if (!trades.length) return;
+        const rows = trades.map(t => `
+          <tr class="${t.outcome==='win'?'table-success':'table-danger'}" style="font-size:.75rem">
+            <td>${t.date_entry||'—'}</td>
+            <td>${(t.entry_price||0).toFixed(2)}</td>
+            <td>${(t.exit_price||0).toFixed(2)}</td>
+            <td class="fw-bold">${(t.pnl_pct>=0?'+':'')+t.pnl_pct.toFixed(2)}%</td>
+            <td>${t.duration||'—'}d</td>
+            <td><span class="badge bg-${t.outcome==='win'?'success':'danger'}">${t.outcome==='win'?'Ganho':'Perda'}</span></td>
+          </tr>`).join('');
+        document.getElementById(tradesId).innerHTML = `
+          <details>
+            <summary class="small text-muted" style="cursor:pointer">
+              ${trades.length} trades — clique para ver
+            </summary>
+            <div class="table-responsive mt-1">
+              <table class="table table-sm table-hover mb-0">
+                <thead class="table-dark" style="font-size:.7rem">
+                  <tr><th>Data</th><th>Entrada</th><th>Saída</th><th>PnL%</th><th>Dur.</th><th>Resultado</th></tr>
+                </thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>
+          </details>`;
+      }, 100);
+    });
   })
   .catch(e => alert('Erro: ' + e))
   .finally(() => {
-    document.querySelector('#runBacktestModal .modal-footer .btn-primary').disabled = false;
-    document.querySelector('#runBacktestModal .modal-footer .btn-primary').textContent = 'Executar';
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Executar';
   });
 }
 </script>

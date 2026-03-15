@@ -6,6 +6,7 @@ Motor de Análise e Recomendação de Investimentos para a B3.
 import logging
 import sys
 import os
+import threading
 from datetime import datetime
 
 from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
@@ -23,6 +24,10 @@ logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = "swing-b3-2024-secret"
+
+# ─── Background task state ────────────────────────────────────────────────────
+_scan_state   = {"running": False, "done": False, "progress": 0, "total": 0, "result": None, "error": None}
+_update_state = {"running": False, "done": False, "result": None, "error": None}
 
 # ─── Initialize DB on startup ─────────────────────────────────────────────────
 from database.connection import init_db
@@ -49,10 +54,25 @@ def inject_globals():
     except Exception:
         unread  = 0
         profile = {}
+
+    def action_badge(action: str) -> str:
+        mapping = {
+            "comprar_normal":  "bg-success",
+            "comprar_pequeno": "bg-success bg-opacity-75",
+            "pre_compra":      "bg-info text-dark",
+            "manter":          "bg-primary",
+            "observar":        "bg-secondary",
+            "reduzir":         "bg-warning text-dark",
+            "sair":            "bg-danger",
+            "ignorar":         "bg-dark",
+        }
+        return mapping.get(action, "bg-secondary")
+
     return {
         "unread_alerts": unread,
         "today": datetime.today().strftime("%d/%m/%Y"),
         "user_profile": profile,
+        "action_badge": action_badge,
     }
 
 
@@ -97,30 +117,44 @@ def radar():
 
 @app.route("/api/scan", methods=["POST"])
 def api_scan():
-    """Trigger a full market scan."""
-    from modules.decision_engine import run_full_scan
-    from modules.ranking import build_daily_ranking
-    from modules.market_regime import get_current_regime
-    from modules.alerts import check_portfolio_alerts, check_regime_change
+    """Trigger a full market scan (runs in background thread)."""
+    if _scan_state["running"]:
+        return jsonify({"status": "running", "progress": _scan_state["progress"], "total": _scan_state["total"]})
 
-    try:
-        regime    = get_current_regime()
-        decisions = run_full_scan()
-        ranking   = build_daily_ranking(decisions, regime)
-        check_portfolio_alerts(decisions)
-        check_regime_change(regime.get("regime"))
+    def _run():
+        _scan_state.update({"running": True, "done": False, "progress": 0, "total": 0, "result": None, "error": None})
+        try:
+            from modules.decision_engine import run_full_scan
+            from modules.ranking import build_daily_ranking
+            from modules.market_regime import get_current_regime
+            from modules.alerts import check_portfolio_alerts, check_regime_change
 
-        buy_actions = ["comprar_pequeno", "comprar_normal", "pre_compra"]
-        summary = {
-            "total_analyzed": len(decisions),
-            "opportunities":  sum(1 for d in decisions if d.get("action") in buy_actions),
-            "regime":         regime.get("label"),
-            "ranking_count":  len(ranking),
-        }
-        return jsonify({"status": "ok", "summary": summary})
-    except Exception as e:
-        logger.error(f"Scan error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+            regime    = get_current_regime()
+            decisions = run_full_scan(status_dict=_scan_state)
+            ranking   = build_daily_ranking(decisions, regime)
+            check_portfolio_alerts(decisions)
+            check_regime_change(regime.get("regime"))
+
+            buy_actions = ["comprar_pequeno", "comprar_normal", "pre_compra"]
+            summary = {
+                "total_analyzed": len(decisions),
+                "opportunities":  sum(1 for d in decisions if d.get("action") in buy_actions),
+                "regime":         regime.get("label"),
+                "ranking_count":  len(ranking),
+            }
+            _scan_state.update({"running": False, "done": True, "result": summary})
+        except Exception as e:
+            logger.error(f"Scan error: {e}")
+            _scan_state.update({"running": False, "done": True, "error": str(e)})
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/scan/status")
+def api_scan_status():
+    """Return current scan progress."""
+    return jsonify(_scan_state)
 
 
 # ─── Ranking ──────────────────────────────────────────────────────────────────
@@ -173,18 +207,51 @@ def asset_detail(ticker):
 
 
 def _ohlcv_to_chart(df, ind: dict) -> dict:
-    """Prepare chart data for frontend."""
+    """Prepare chart data for frontend — inclui séries temporais para BB, MACD, EMAs."""
     if df.empty:
         return {}
+
+    from ta import trend as ta_trend, volatility as ta_vol
+
+    def _to_list(series):
+        return [None if (v != v) else round(float(v), 4) for v in series]
+
     dates  = df["date"].astype(str).tolist()
     closes = df["close"].round(2).tolist()
-    vols   = df["volume"].tolist()
+    vols   = df["volume"].fillna(0).astype(int).tolist()
+
+    c = df["close"]
+
+    # Médias móveis
+    sma20 = _to_list(ta_trend.sma_indicator(c, window=20, fillna=False))
+    sma50 = _to_list(ta_trend.sma_indicator(c, window=50, fillna=False))
+    ema9  = _to_list(ta_trend.ema_indicator(c, window=9,  fillna=False))
+    ema21 = _to_list(ta_trend.ema_indicator(c, window=21, fillna=False))
+
+    # Bollinger Bands
+    bb = ta_vol.BollingerBands(c, window=20, window_dev=2, fillna=False)
+    bb_upper = _to_list(bb.bollinger_hband())
+    bb_lower = _to_list(bb.bollinger_lband())
+
+    # MACD
+    macd_obj  = ta_trend.MACD(c, window_slow=26, window_fast=12, window_sign=9, fillna=False)
+    macd_line = _to_list(macd_obj.macd())
+    macd_sig  = _to_list(macd_obj.macd_signal())
+    macd_hist = _to_list(macd_obj.macd_diff())
+
     return {
-        "dates":   dates,
-        "closes":  closes,
-        "volumes": vols,
-        "sma20":   ind.get("sma20"),
-        "sma50":   ind.get("sma50"),
+        "dates":     dates,
+        "closes":    closes,
+        "volumes":   vols,
+        "sma20":     sma20,
+        "sma50":     sma50,
+        "ema9":      ema9,
+        "ema21":     ema21,
+        "bb_upper":  bb_upper,
+        "bb_lower":  bb_lower,
+        "macd":      macd_line,
+        "macd_sig":  macd_sig,
+        "macd_hist": macd_hist,
     }
 
 
@@ -335,21 +402,33 @@ def profile():
 
 @app.route("/api/update", methods=["POST"])
 def api_update():
-    """Trigger data update for specific tickers or all."""
-    from modules.data_collector import run_daily_update
-    from modules.technical_analysis import compute_and_store_indicators
-    from modules.universe import get_all_tickers
+    """Trigger data update (runs in background thread)."""
+    if _update_state["running"]:
+        return jsonify({"status": "running"})
 
-    try:
-        tickers = request.json.get("tickers") if request.json else None
-        if not tickers:
-            tickers = get_all_tickers()[:30]  # limit for quick update
+    req_json = request.json or {}
 
-        result = run_daily_update(tickers)
-        return jsonify({"status": "ok", "result": result})
-    except Exception as e:
-        logger.error(f"Update error: {e}")
-        return jsonify({"status": "error", "message": str(e)}), 500
+    def _run():
+        _update_state.update({"running": True, "done": False, "result": None, "error": None})
+        try:
+            from modules.data_collector import run_daily_update
+            from modules.universe import get_all_tickers
+
+            tickers = req_json.get("tickers") or get_all_tickers()[:30]
+            result = run_daily_update(tickers)
+            _update_state.update({"running": False, "done": True, "result": result})
+        except Exception as e:
+            logger.error(f"Update error: {e}")
+            _update_state.update({"running": False, "done": True, "error": str(e)})
+
+    threading.Thread(target=_run, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+@app.route("/api/update/status")
+def api_update_status():
+    """Return current update progress."""
+    return jsonify(_update_state)
 
 
 @app.route("/api/update/ticker/<ticker>", methods=["POST"])
@@ -384,10 +463,14 @@ def api_run_backtest():
     start    = data.get("start", "2021-01-01")
     end      = data.get("end", datetime.today().strftime("%Y-%m-%d"))
 
+    KEEP = {"ticker","start","end","total_trades","wins","losses","win_rate",
+             "avg_gain_pct","avg_loss_pct","payoff","expected_value",
+             "total_return","max_drawdown","sharpe_ratio","avg_duration",
+             "trades","equity_curve"}
     try:
         results = run_all_backtests(tickers, start, end)
         return jsonify({"status": "ok", "results": {
-            k: {kk: vv for kk, vv in v.items() if kk != "trades"}
+            k: {kk: vv for kk, vv in v.items() if kk in KEEP}
             for k, v in results.items()
         }})
     except Exception as e:
